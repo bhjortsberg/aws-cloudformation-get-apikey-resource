@@ -1,0 +1,104 @@
+Parameters:
+  ApiKeyIdParam:
+    Type: String
+
+Resources:
+  GetApiKey:
+    Type: Custom::GetApiKey
+    Properties:
+      ServiceToken: !GetAtt GetApiKeyResourceHandler.Arn
+      ApiKeyId: !Ref ApiKeyIdParam
+  GetApiKeyResourceHandler:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Handler for GetApiKey Custom Resource
+      Handler: index.handler
+      Runtime: python3.9
+      Role: !GetAtt GetApiKeyResourceHandlerRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import urllib.request
+
+          def handler(event, context):
+              response_status = "SUCCESS"
+
+              if event['RequestType'] != 'Create':
+                # Only care about stack Create opertations
+                send_response(event, response_status)
+                return
+
+              api_key_id = event['ResourceProperties'].get('ApiKeyId')
+              client = boto3.client('apigateway')
+              message = ''
+              data = {}
+
+              if api_key_id:
+                  try:
+                      r = client.get_api_key(apiKey = api_key_id, includeValue=True)
+                      # Add output
+                      data = { "ApiKey": f"{r['value']}" }
+                  except Exception as e:
+                      response_status = "FAILED"
+                      print(f'Error: {e}')
+                      message = f'Failed to deploy {str(e)}'
+
+              send_response(event, response_status, message, data)
+
+          def send_response(event, status, message='', data={}):
+              # Fill the required response properties
+              response = {
+                  "Status": status,
+                  "Reason": message,
+                  "PhysicalResourceId": event.get('PhysicalResourceId') or event['LogicalResourceId'],
+                  "StackId": event['StackId'],
+                  "RequestId": event['RequestId'],
+                  "LogicalResourceId": event['LogicalResourceId'],
+                  "Data": data}
+              # Send the response
+              response_body = json.dumps(response).encode('utf-8')
+              req = urllib.request.Request(url=event['ResponseURL'], data=response_body, method="PUT")
+              with urllib.request.urlopen(req) as r:
+                  print(r.read().decode('utf-8'))
+  GetApiKeyResourceHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      RetentionInDays: 3
+      LogGroupName:
+        !Join
+          - ''
+          - - "/aws/lambda/"
+            - !Ref GetApiKeyResourceHandler
+  GetApiKeyResourceHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+          - ""
+          - - "arn:"
+            - Ref: AWS::Partition
+            - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: AllowApiGatewayGet
+          PolicyDocument:
+            Statement:
+            - Action: apigateway:GET
+              Effect: Allow
+              Resource: "*"
+            Version: "2012-10-17"
+
+
+Outputs:
+  ApiKey:
+    Description: 'API Key as Output from Custom Resource'
+    Value: !GetAtt GetApiKey.ApiKey
+
