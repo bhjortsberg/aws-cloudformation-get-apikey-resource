@@ -38,7 +38,7 @@ Resources:
                   try:
                       r = client.get_api_key(apiKey = api_key_id, includeValue=True)
                       # Add output
-                      data = { "ApiKey": f"{r['value']}" }
+                      data = { "ApiKey": r['value'] }
                   except Exception as e:
                       response_status = "FAILED"
                       print(f'Error: {e}')
