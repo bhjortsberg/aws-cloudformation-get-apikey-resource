@@ -49,6 +49,7 @@ Resources:
               import urllib.request
 
               s3 = boto3.client("s3")
+              l = boto3.client("lambda")
 
               CONFIGURATION_TYPES = ["TopicConfigurations", "QueueConfigurations", "LambdaFunctionConfigurations"]
 
@@ -111,9 +112,19 @@ Resources:
                 for t in CONFIGURATION_TYPES:
                   # if the notification was created by us, we know what id to expect
                   # so we can filter by it.
-                  external_notifications[t] = [n for n in existing_notifications.get(t, []) if not n['Id'].startswith(f"{stack_id}-")]
+                  external_notifications[t] = [n for n in existing_notifications
+                    .get(t, []) if not n['Id'].startswith(f"{stack_id}-") and lambda_exist(n['LambdaFunctionArn'])]
 
                 return external_notifications
+
+              def lambda_exist(lambda_arn):
+                try:
+                  l.get_function(FunctionName=lambda_arn)
+                except Exception as e:
+                  if 'ResourceNotFound' in str(e):
+                    print(f'lambda {lambda_arn} does not exist. {e}')
+                    return False
+                return True
 
 
               def get_bucket_notification_configuration(bucket):
