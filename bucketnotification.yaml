@@ -22,7 +22,7 @@ Resources:
                       - Name: suffix
                         Value: .png
                       - Name: prefix
-                        Value: images
+                        Value: !Sub images/${AWS::StackName}
                 LambdaFunctionArn:
                   Fn::GetAtt:
                     - TestLambda
